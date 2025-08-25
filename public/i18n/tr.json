@@ -17,14 +17,21 @@
     "selectMode": {
       "multi": "Önce başlangıçtan seç",
       "frame": "Önce çerçeveden seç"
+    },
+    "autoMode": {
+      "on": "Auto mode açık",
+      "off": "Auto mode kapalı"
+    },
+    "autoStart": {
+      "on": "Oto başlat açık",
+      "off": "Oto başlat kapalı"
     }
   },
   "modal": {
     "closeTitle": "Kapat"
   },
   "tabs": {
-    "accounts": "Hesaplar",
-    "settings": "Ayarlar"
+    "accounts": "Hesaplar"
   },
   "accounts": {
     "add": "Hesap ekle",
@@ -34,6 +41,7 @@
   "table": {
     "accountName": "Hesap ismi",
     "accountToken": "Hesap Tokeni",
+    "droplets": "Droplets",
     "pixelRight": "Piksel Hakkı",
     "status": "Durum",
     "actions": "İşlem",
@@ -48,7 +56,8 @@
     "worldXLabel": "World X",
     "worldYLabel": "World Y",
     "fetchButton": "Getir",
-    "uploadImage": "Resim yükle"
+    "uploadImage": "Resim yükle",
+    "mosaicButton": "Mozaik"
   },
   "preview": {
     "scale": "Ölçek (%)",
@@ -58,10 +67,23 @@
     "fillBackground": "Arka planı doldur",
     "color": "Renk",
     "addToMap": "Haritaya ekle",
-    "maxSizeExceeded": "Maksimum boyut 1000x1000 piksel."
+    "maxSizeExceeded": "Maksimum boyut 1000x1000 piksel.",
+    "alphaThreshold": "Şeffaflık",
+    "colorMetric": "Renk algoritması",
+    "metricRgb": "RGB (fast)",
+    "metricLab": "Lab (CIE76)",
+    "metricOklab": "Oklab",
+    "metricCiede2000": "CIEDE2000 (more accurate, slower)",
+    "dithering": "Dithering",
+    "ditheringOn": "Dithering: ON",
+    "ditheringOff": "Dithering: OFF"
   },
-  "settings": {
-    "cf_clearance": "cf_clearance"
+  "settings": {},
+  "mosaic": {
+    "title": "Mozaik",
+    "use2": "2 kord kullan",
+    "use4": "4 kord kullan",
+    "fetch": "Getir"
   },
   "buttons": {
     "back": "Geri",
@@ -69,7 +91,8 @@
     "add": "Ekle",
     "saveSettings": "Kaydet",
     "edit": "Düzenle",
-    "checkPixels": "Piksel kontrol et",
+    "checkPixels": "Kontrol",
+    "shop": "Mağaza",
     "delete": "Sil"
   },
   "thumb": {
@@ -81,7 +104,12 @@
   },
   "palette": {
     "transparentTitle": "Transparan (resim rengi)",
-    "colorTitle": "Renk #{id}"
+    "colorTitle": "Renk #{id}",
+    "premiumColorTitle": "Premium renk (kalan {remain}/{total})"
+  },
+  "paletteMode": {
+    "premium": "Premium renk kullan",
+    "free": "Ücretsiz renk kullan"
   },
   "controls": {
     "movement": "Hareket"
@@ -96,7 +124,7 @@
   "messages": {
     "selectAccountFirst": "Önce hesap seçin.",
     "maxPixelsReached": "Maksimum piksel sayısına ulaştınız: {limit}/{limit}",
-    "addCfClearancePrompt": "Önce Ayarlar sekmesinden cf_clearance değerini ekleyin (en az 30 karakter).",
+    
     "max12Accounts": "En fazla 12 hesap seçebilirsiniz.",
     "startRequirementsMissing": "Başlatmak için token girin, hesap seçin ve en az 1 piksel seçin.",
     "noSelectedImage": "Seçili resim yok.",
@@ -105,8 +133,34 @@
     "insufficientPixelPower": "Yetersiz piksel gücü: {n} piksel gönderilemedi.",
     "imageLoadFailed": "Resim yüklenemedi. Değerleri kontrol edin.",
     "tokenAlreadyExists": "Bu token ile daha önce hesap kaydedildi.",
-    "cfCannotBeClearedWithAccounts": "Hesap varken cf_clearance boş bırakılamaz.",
-    "cfClearanceChange": "Lütfen cf_clearance değiştirin."
+    
+    "cfClearanceChange": "Lütfen cf_clearance değiştirin.",
+    "premiumColorLimitReached": "Seçilen premium renk için yeterli kapasite yok.",
+    "accountNotFound": "Hesap bulunamadı",
+    "purchaseSuccess": "Satın alım başarılı",
+    "purchaseFail": "Satın alım başarısız",
+    "tokenPastedFromExtension": "Token eklentiden yapıştırıldı"
+  },
+  "shop": {
+    "premiumTitle": "Premium Renkler",
+    "purchased": "Satın alınan renkler",
+    "exclusive": "Özel palet",
+    "buyPremium": "💧 2000 Droplets",
+    "itemsTitle": "Ürünler",
+    "itemsSub": "Daha fazla hak al",
+    "maxTitle": "+5 Maks. Hak",
+    "maxDesc": "Maksimum boyama hakkı kapasitesini artır",
+    "recTitle": "+30 Boyama Hakkı",
+    "recDesc": "Boyama haklarını yenile",
+    "autoBuy": "Oto satın al"
+  },
+  "favorites": {
+    "openTitle": "Favorileri aç",
+    "starTitle": "Konumu kaydet",
+    "title": "Favoriler",
+    "saveTitle": "Konumu kaydet",
+    "nameLabel": "Ad",
+    "load": "Yükle"
   }
 }
 

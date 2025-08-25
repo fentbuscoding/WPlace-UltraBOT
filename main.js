@@ -97,6 +97,7 @@ async function getGotScrapingFn() {
 const DB_DIR = path.resolve(process.cwd(), 'db');
 const ACCOUNTS_FILE = path.join(DB_DIR, 'accounts.json');
 const SETTINGS_FILE = path.join(DB_DIR, 'settings.json');
+const FAVORITES_FILE = path.join(DB_DIR, 'favorites.json');
 
 function ensureDb() {
   try { fs.mkdirSync(DB_DIR, { recursive: true }); } catch {}
@@ -105,6 +106,9 @@ function ensureDb() {
   }
   if (!fs.existsSync(SETTINGS_FILE)) {
     try { fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ cf_clearance: '', worldX: null, worldY: null }, null, 2)); } catch {}
+  }
+  if (!fs.existsSync(FAVORITES_FILE)) {
+    try { fs.writeFileSync(FAVORITES_FILE, JSON.stringify([], null, 2)); } catch {}
   }
 }
 
@@ -119,6 +123,19 @@ function readJson(filePath, fallback) {
 
 function writeJson(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
+// Simple SSE hub for live events from extension → UI
+const sseClients = new Set();
+function sseBroadcast(eventName, payload) {
+  try {
+    const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    sseClients.forEach((res) => {
+      try {
+        res.write(`event: ${eventName}\n`);
+        res.write(`data: ${data}\n\n`);
+      } catch {}
+    });
+  } catch {}
 }
 
 
@@ -240,6 +257,76 @@ async function fetchMePuppeteer(cf_clearance, token) {
   }
 }
 
+async function purchaseProduct(cf_clearance, token, productId, amount) {
+  const payload = JSON.stringify({ product: { id: productId, amount } });
+  try {
+    const gotScraping = await getGotScrapingFn();
+    if (gotScraping) {
+      const r = await gotScraping({
+        url: 'https://backend.wplace.live/purchase',
+        method: 'POST',
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'application/json, text/plain, */*',
+          'Origin': 'https://wplace.live',
+          'Referer': 'https://wplace.live/',
+          'Content-Type': 'application/json',
+          'Cookie': `cf_clearance=${cf_clearance || ''}; j=${token || ''}`
+        },
+        body: payload,
+        throwHttpErrors: false,
+        decompress: true,
+        agent: { https: HTTPS_AGENT },
+        timeout: { request: 30000 }
+      });
+      const status = r && (r.statusCode || r.status) || 0;
+      if (status === 200) {
+        try {
+          const data = typeof r.body === 'string' ? JSON.parse(r.body) : r.body;
+          return data && data.success === true;
+        } catch {}
+      }
+      return false;
+    }
+  } catch {}
+
+  return new Promise((resolve) => {
+    try {
+      const options = {
+        hostname: 'backend.wplace.live',
+        path: '/purchase',
+        method: 'POST',
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'application/json, text/plain, */*',
+          'Origin': 'https://wplace.live',
+          'Referer': 'https://wplace.live/',
+          'Content-Type': 'application/json',
+          'Cookie': `cf_clearance=${cf_clearance || ''}; j=${token || ''}`
+        },
+        agent: HTTPS_AGENT
+      };
+      const req = https.request(options, (resp) => {
+        let buf = '';
+        resp.on('data', (d) => { buf += d; });
+        resp.on('end', () => {
+          let ok = false;
+          try {
+            const data = JSON.parse(buf);
+            ok = resp.statusCode === 200 && data && data.success === true;
+          } catch {}
+          resolve(ok);
+        });
+      });
+      req.on('error', () => resolve(false));
+      req.write(payload);
+      req.end();
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 function startServer(port, host) {
   const server = http.createServer((req, res) => {
     const parsed = url.parse(req.url, true);
@@ -287,7 +374,131 @@ function startServer(port, host) {
       }
       return;
     }
-    
+    // Server-Sent Events for live notifications
+    if (parsed.pathname === '/api/events' && req.method === 'GET') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+      });
+      try { res.write(': ok\n\n'); } catch {}
+      sseClients.add(res);
+      const ping = setInterval(() => { try { res.write('event: ping\ndata: {}\n\n'); } catch {} }, 15000);
+      req.on('close', () => { try { clearInterval(ping); } catch {}; sseClients.delete(res); });
+      return;
+    }
+
+    // CORS preflight for token endpoint
+    if (parsed.pathname === '/api/token' && req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Max-Age': '600'
+      });
+      res.end();
+      return;
+    }
+    // Receive token captured by extension and notify connected UIs
+    if (parsed.pathname === '/api/token' && req.method === 'POST') {
+      readJsonBody(req).then((body) => {
+        const token = body && typeof body.token === 'string' ? body.token : '';
+        const worldX = (body && (typeof body.worldX === 'string' || typeof body.worldX === 'number')) ? body.worldX : null;
+        const worldY = (body && (typeof body.worldY === 'string' || typeof body.worldY === 'number')) ? body.worldY : null;
+        if (!token) { res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' }); res.end(JSON.stringify({ ok: false })); return; }
+        try {
+          const existing = readJson(SETTINGS_FILE, { cf_clearance: '', worldX: null, worldY: null });
+          const merged = { ...existing };
+          if (worldX != null) merged.worldX = Number(worldX);
+          if (worldY != null) merged.worldY = Number(worldY);
+          writeJson(SETTINGS_FILE, merged);
+        } catch {}
+        sseBroadcast('token', { token, worldX, worldY });
+        res.writeHead(204, { 'Access-Control-Allow-Origin': '*' });
+        res.end();
+      }).catch(() => { res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' }); res.end(JSON.stringify({ ok: false })); });
+      return;
+    }
+
+    // Favorites API
+    if (parsed.pathname === '/api/favorites' && req.method === 'GET') {
+      const favorites = readJson(FAVORITES_FILE, []);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(favorites));
+      return;
+    }
+    if (parsed.pathname === '/api/favorites' && req.method === 'POST') {
+      readJsonBody(req).then((body) => {
+        try {
+          const name = (body && typeof body.name === 'string') ? body.name : '';
+          const modeRaw = (body && typeof body.mode === 'string') ? body.mode : '';
+          const mode = (modeRaw === 'mosaic' || modeRaw === 'single') ? modeRaw : 'single';
+          const coordsIn = Array.isArray(body && body.coords) ? body.coords : [];
+          const coords = coordsIn.map((c) => ({ x: Number(c && c.x), y: Number(c && c.y) }))
+            .filter((c) => Number.isFinite(c.x) && Number.isFinite(c.y));
+          if (!coords.length) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'invalid coords' }));
+            return;
+          }
+          const favs = readJson(FAVORITES_FILE, []);
+          const sameLoc = (a, b) => a && b && a.mode === b.mode && JSON.stringify(a.coords) === JSON.stringify(b.coords);
+          const incoming = { name, mode, coords };
+          const idx = favs.findIndex((f) => sameLoc(f, incoming));
+          let status = 200;
+          if (idx >= 0) {
+            // Update name if provided
+            const current = favs[idx] || {};
+            favs[idx] = { ...current, name: name || current.name || '' };
+          } else {
+            favs.push(incoming);
+            status = 201;
+          }
+          writeJson(FAVORITES_FILE, favs);
+          res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify(incoming));
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'failed to save' }));
+        }
+      }).catch(() => {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: 'invalid json' }));
+      });
+      return;
+    }
+    if (parsed.pathname === '/api/favorites' && req.method === 'DELETE') {
+      readJsonBody(req).then((body) => {
+        try {
+          const modeRaw = (body && typeof body.mode === 'string') ? body.mode : '';
+          const mode = (modeRaw === 'mosaic' || modeRaw === 'single') ? modeRaw : '';
+          const coordsIn = Array.isArray(body && body.coords) ? body.coords : [];
+          const coords = coordsIn.map((c) => ({ x: Number(c && c.x), y: Number(c && c.y) }))
+            .filter((c) => Number.isFinite(c.x) && Number.isFinite(c.y));
+          if (!mode || !coords.length) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'invalid payload' }));
+            return;
+          }
+          const favs = readJson(FAVORITES_FILE, []);
+          const sameLoc = (a, b) => a && b && a.mode === b.mode && JSON.stringify(a.coords) === JSON.stringify(b.coords);
+          const target = { mode, coords };
+          const next = favs.filter((f) => !sameLoc(f, target));
+          writeJson(FAVORITES_FILE, next);
+          res.writeHead(204);
+          res.end();
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'failed to delete' }));
+        }
+      }).catch(() => {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: 'invalid json' }));
+      });
+      return;
+    }
+
     
     if (parsed.pathname && /^\/api\/pixel\/([^\/]+)\/([^\/]+)$/.test(parsed.pathname) && req.method === 'POST') {
       const m = parsed.pathname.match(/^\/api\/pixel\/([^\/]+)\/([^\/]+)$/);
@@ -304,8 +515,16 @@ function startServer(port, host) {
             res.end(JSON.stringify({ error: 'invalid payload' }));
             return;
           }
-          const settings = readJson(SETTINGS_FILE, { cf_clearance: '' });
-          const cf = settings && typeof settings.cf_clearance === 'string' ? settings.cf_clearance : '';
+          // Use cf_clearance stored on the specific account matching this token
+          const accounts = readJson(ACCOUNTS_FILE, []);
+          const acc = accounts.find(a => a && typeof a.token === 'string' && a.token === jToken);
+          const cf = acc && typeof acc.cf_clearance === 'string' ? acc.cf_clearance : '';
+          if (!cf || cf.length < 30) {
+            try { deactivateAccountByToken(jToken); } catch {}
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'cf_clearance missing for account' }));
+            return;
+          }
           const remotePath = `/s0/pixel/${encodeURIComponent(area)}/${encodeURIComponent(no)}`;
           const payload = JSON.stringify({ colors, coords, t });
           
@@ -391,9 +610,125 @@ function startServer(port, host) {
       });
       return;
     }
+
+    // Proxy purchase to backend.wplace.live
+    if (parsed.pathname === '/api/purchase' && req.method === 'POST') {
+      readJsonBody(req).then(async (body) => {
+        try {
+          const productIdRaw = body && body.productId;
+          const amountRaw = body && body.amount;
+          const variantRaw = body && body.variant;
+          const jToken = body && typeof body.j === 'string' ? body.j : '';
+          const productId = Number(productIdRaw);
+          const amount = Math.max(1, Number(amountRaw || 1));
+          const variant = (variantRaw == null ? null : Number(variantRaw));
+          if (!Number.isFinite(productId) || productId <= 0 || !jToken) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'invalid payload' }));
+            return;
+          }
+          const accounts = readJson(ACCOUNTS_FILE, []);
+          const acc = accounts.find(a => a && typeof a.token === 'string' && a.token === jToken);
+          const cf = acc && typeof acc.cf_clearance === 'string' ? acc.cf_clearance : '';
+          if (!cf || cf.length < 30) {
+            try { deactivateAccountByToken(jToken); } catch {}
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'cf_clearance missing for account' }));
+            return;
+          }
+          const remotePath = '/purchase';
+          const payloadObj = { product: { id: productId, amount: amount } };
+          if (Number.isFinite(variant)) { payloadObj.product.variant = variant; }
+          const payload = JSON.stringify(payloadObj);
+
+          try {
+            const gotScraping = await getGotScrapingFn();
+            if (gotScraping) {
+              debugLog('proxy purchase POST begin (got-scraping)', { path: remotePath, body: payload });
+              const r = await gotScraping({
+                url: 'https://backend.wplace.live' + remotePath,
+                method: 'POST',
+                headers: {
+                  'User-Agent': 'Mozilla/5.0',
+                  'Accept': 'application/json, text/plain, */*',
+                  'Origin': 'https://wplace.live',
+                  'Referer': 'https://wplace.live/',
+                  'Content-Type': 'application/json',
+                  'Cookie': `j=${jToken}; cf_clearance=${cf}`
+                },
+                body: payload,
+                throwHttpErrors: false,
+                decompress: true,
+                agent: { https: HTTPS_AGENT },
+                timeout: { request: 30000 }
+              });
+              const status = r && (r.statusCode || r.status) || 0;
+              const text = r && (typeof r.body === 'string' ? r.body : (r.body ? String(r.body) : ''));
+              debugLog('proxy purchase POST end (got-scraping)', { status, bodyPreview: String(text || '').slice(0, 300) });
+              res.writeHead(status || 502, { 'Content-Type': 'application/json; charset=utf-8' });
+              res.end(text);
+              return;
+            }
+          } catch {}
+
+          const options = {
+            hostname: 'backend.wplace.live',
+            port: 443,
+            path: remotePath,
+            method: 'POST',
+            agent: HTTPS_AGENT,
+            headers: {
+              'User-Agent': 'Mozilla/5.0',
+              'Accept': 'application/json, text/plain, */*',
+              'Origin': 'https://wplace.live',
+              'Referer': 'https://wplace.live/',
+              'Content-Type': 'application/json',
+              'Cookie': `j=${jToken}; cf_clearance=${cf}`
+            }
+          };
+          debugLog('proxy purchase POST begin', { path: remotePath, headers: { ...options.headers, Cookie: maskCookieHeader(options.headers.Cookie) }, body: payload });
+          const upstreamReq = https.request(options, (up) => {
+            const chunks = [];
+            up.on('data', (d) => chunks.push(d));
+            up.on('end', () => {
+              const encoding = ((up.headers && (up.headers['content-encoding'] || up.headers['Content-Encoding'])) || '').toLowerCase();
+              let buf = Buffer.concat(chunks);
+              if (encoding.includes('gzip')) { try { buf = zlib.gunzipSync(buf); } catch {} }
+              else if (encoding.includes('deflate')) { try { buf = zlib.inflateRawSync(buf); } catch { try { buf = zlib.inflateSync(buf); } catch {} } }
+              const text = buf.toString('utf8');
+              const statusCode = up.statusCode || 0;
+              debugLog('proxy purchase POST end', { status: statusCode, bodyPreview: text.slice(0, 300) });
+              res.writeHead(statusCode || 502, { 'Content-Type': 'application/json; charset=utf-8' });
+              res.end(text);
+            });
+          });
+          upstreamReq.on('error', (e) => {
+            res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'upstream error', message: e && e.message ? e.message : String(e) }));
+          });
+          upstreamReq.write(payload);
+          upstreamReq.end();
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'proxy failed' }));
+        }
+      }).catch(() => {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: 'invalid json' }));
+      });
+      return;
+    }
     
     if (parsed.pathname === '/api/accounts' && req.method === 'GET') {
       const accounts = readJson(ACCOUNTS_FILE, []);
+      try {
+        for (let i = 0; i < accounts.length; i++) {
+          const a = accounts[i];
+          const cf = a && typeof a.cf_clearance === 'string' ? a.cf_clearance : '';
+          if (!cf || cf.length < 30) { accounts[i] = { ...a, active: false }; }
+        }
+        writeJson(ACCOUNTS_FILE, accounts);
+      } catch {}
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify(accounts));
       return;
@@ -422,8 +757,24 @@ function startServer(port, host) {
         const updated = { ...accounts[idx] };
         if (typeof body.name === 'string') updated.name = body.name;
         if (typeof body.token === 'string') updated.token = body.token;
+        if (typeof body.cf_clearance === 'string') {
+          const newCf = String(body.cf_clearance);
+          const dup = accounts.find(a => a && a.id !== id && typeof a.cf_clearance === 'string' && a.cf_clearance === newCf);
+          if (dup) {
+            res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'cf_clearance already used' }));
+            return;
+          }
+          updated.cf_clearance = newCf;
+        }
         if (body.pixelRight != null) updated.pixelRight = body.pixelRight;
         if (typeof body.active === 'boolean') updated.active = body.active;
+        if (body.autobuy === null) { updated.autobuy = null; }
+        else if (body.autobuy === 'max' || body.autobuy === 'rec') { updated.autobuy = body.autobuy; }
+        try {
+          const cf = updated && typeof updated.cf_clearance === 'string' ? updated.cf_clearance : '';
+          if (!cf || cf.length < 30) updated.active = false;
+        } catch {}
         accounts[idx] = updated;
         writeJson(ACCOUNTS_FILE, accounts);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -434,56 +785,45 @@ function startServer(port, host) {
       });
       return;
     }
-    if (parsed.pathname === '/api/settings' && req.method === 'GET') {
-      const settings = readJson(SETTINGS_FILE, { cf_clearance: '', worldX: null, worldY: null });
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify(settings));
-      return;
-    }
-    if (parsed.pathname === '/api/settings' && req.method === 'POST') {
-      readJsonBody(req).then((body) => {
-        const existing = readJson(SETTINGS_FILE, { cf_clearance: '', worldX: null, worldY: null });
-        const merged = { ...existing };
-        if (body && Object.prototype.hasOwnProperty.call(body, 'cf_clearance') && typeof body.cf_clearance === 'string') {
-          merged.cf_clearance = body.cf_clearance;
-        }
-        const worldX = (body && (typeof body.worldX === 'number' || body.worldX === null)) ? body.worldX : undefined;
-        const worldY = (body && (typeof body.worldY === 'number' || body.worldY === null)) ? body.worldY : undefined;
-        if (worldX !== undefined) merged.worldX = worldX;
-        if (worldY !== undefined) merged.worldY = worldY;
-        writeJson(SETTINGS_FILE, merged);
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ cf_clearance: merged.cf_clearance }));
-      }).catch(() => {
-        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ error: 'invalid json' }));
-      });
-      return;
-    }
+    // Settings endpoints removed; cf_clearance is now per-account
     if (parsed.pathname === '/api/accounts' && req.method === 'POST') {
       readJsonBody(req).then(async (body) => {
         const name = (body && body.name) ? String(body.name) : '';
         const token = (body && body.token) ? String(body.token) : '';
-        if (!name || !token) {
+        const cf_clearance = (body && body.cf_clearance) ? String(body.cf_clearance) : '';
+        if (!name || !token || !cf_clearance || cf_clearance.length < 30) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'name and token required' }));
+          res.end(JSON.stringify({ error: 'name, token and cf_clearance required' }));
           return;
         }
         const accounts = readJson(ACCOUNTS_FILE, []);
-        const account = { id: Date.now(), name, token, pixelCount: null, pixelMax: null, active: false };
-        
-        const settings = readJson(SETTINGS_FILE, { cf_clearance: '' });
-        if (settings.cf_clearance && settings.cf_clearance.length >= 30) {
-          try {
-            const me = await fetchMe(settings.cf_clearance, token);
-            if (me && me.charges) {
-              account.pixelCount = Number(me.charges.count);
-              account.pixelMax = Number(me.charges.max);
-              account.active = true;
-            }
-            if (me && me.name && !name) account.name = String(me.name);
-          } catch {}
-        }
+        try {
+          const dup = accounts.find(a => a && typeof a.cf_clearance === 'string' && a.cf_clearance === cf_clearance);
+          if (dup) {
+            res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'cf_clearance already used' }));
+            return;
+          }
+        } catch {}
+        const account = { id: Date.now(), name, token, cf_clearance, pixelCount: null, pixelMax: null, droplets: null, extraColorsBitmap: null, active: false, autobuy: null };
+        try {
+          const me = await fetchMe(cf_clearance, token);
+          if (me && me.charges) {
+            account.pixelCount = Number(me.charges.count);
+            account.pixelMax = Number(me.charges.max);
+            account.active = true;
+          }
+          if (me && Object.prototype.hasOwnProperty.call(me, 'droplets')) {
+            const d = Number(me.droplets);
+            account.droplets = Number.isFinite(d) ? Math.floor(d) : null;
+          }
+          if (me && Object.prototype.hasOwnProperty.call(me, 'extraColorsBitmap')) {
+            const b = Number(me.extraColorsBitmap);
+            account.extraColorsBitmap = Number.isFinite(b) ? Math.floor(b) : null;
+          }
+          if (me && me.name && !name) account.name = String(me.name);
+        } catch {}
+        try { if (!account.cf_clearance || account.cf_clearance.length < 30) account.active = false; } catch {}
         accounts.push(account);
         writeJson(ACCOUNTS_FILE, accounts);
         res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -500,14 +840,16 @@ function startServer(port, host) {
       const accounts = readJson(ACCOUNTS_FILE, []);
       const idx = accounts.findIndex(a => a.id === id);
       if (idx === -1) { res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'not found' })); return; }
-      const settings = readJson(SETTINGS_FILE, { cf_clearance: '' });
-      if (!settings.cf_clearance || settings.cf_clearance.length < 30) { res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'cf_clearance missing' })); return; }
       const acct = accounts[idx];
+      const cf = acct && typeof acct.cf_clearance === 'string' ? acct.cf_clearance : '';
+      if (!cf || cf.length < 30) {
+        try { accounts[idx] = { ...acct, active: false }; writeJson(ACCOUNTS_FILE, accounts); } catch {}
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'cf_clearance missing for account' })); return; }
       (async () => {
         debugLog('refresh: begin got-scraping /me fetch', { accountId: id, name: acct && acct.name ? String(acct.name) : undefined });
         let me = null;
         try {
-          me = await fetchMe(settings.cf_clearance, acct.token);
+          me = await fetchMe(cf, acct.token);
         } catch (err) {
           const msg = (err && err.message) ? String(err.message) : String(err);
           const code = (err && err.code) ? String(err.code) : '';
@@ -519,7 +861,9 @@ function startServer(port, host) {
           ok: !!me,
           meta: me ? {
             name: me.name,
-            charges: me.charges ? { count: me.charges.count, max: me.charges.max } : undefined
+            charges: me.charges ? { count: me.charges.count, max: me.charges.max } : undefined,
+            droplets: Object.prototype.hasOwnProperty.call(me, 'droplets') ? me.droplets : undefined,
+            extraColorsBitmap: Object.prototype.hasOwnProperty.call(me, 'extraColorsBitmap') ? me.extraColorsBitmap : undefined
           } : null
         });
         if (me && me.charges) {
@@ -529,6 +873,45 @@ function startServer(port, host) {
           acct.active = true;
         } else {
           acct.active = false;
+        }
+        if (me && Object.prototype.hasOwnProperty.call(me, 'droplets')) {
+          const d = Number(me.droplets);
+          acct.droplets = Number.isFinite(d) ? Math.floor(d) : null;
+        }
+        if (me && Object.prototype.hasOwnProperty.call(me, 'extraColorsBitmap')) {
+          const b = Number(me.extraColorsBitmap);
+          acct.extraColorsBitmap = Number.isFinite(b) ? Math.floor(b) : null;
+        }
+        if (acct.autobuy === 'max' || acct.autobuy === 'rec') {
+          const price = 500;
+          const productId = acct.autobuy === 'max' ? 70 : 80;
+          const droplets = Number(acct.droplets || 0);
+          const qty = Math.floor(droplets / price);
+          if (qty > 0) {
+            try {
+              const ok = await purchaseProduct(cf, acct.token, productId, qty);
+              if (ok) {
+                try {
+                  const me2 = await fetchMe(cf, acct.token);
+                  if (me2 && me2.charges) {
+                    acct.pixelCount = Math.floor(Number(me2.charges.count));
+                    acct.pixelMax = Math.floor(Number(me2.charges.max));
+                    acct.active = true;
+                  } else {
+                    acct.active = false;
+                  }
+                  if (me2 && Object.prototype.hasOwnProperty.call(me2, 'droplets')) {
+                    const d2 = Number(me2.droplets);
+                    acct.droplets = Number.isFinite(d2) ? Math.floor(d2) : null;
+                  }
+                  if (me2 && Object.prototype.hasOwnProperty.call(me2, 'extraColorsBitmap')) {
+                    const b2 = Number(me2.extraColorsBitmap);
+                    acct.extraColorsBitmap = Number.isFinite(b2) ? Math.floor(b2) : null;
+                  }
+                } catch {}
+              }
+            } catch {}
+          }
         }
         accounts[idx] = acct;
         writeJson(ACCOUNTS_FILE, accounts);

@@ -17,6 +17,14 @@
     "selectMode": {
       "multi": "Seleccionar desde inicio",
       "frame": "Seleccionar desde contorno"
+    },
+    "autoMode": {
+      "on": "Modo automático activado",
+      "off": "Modo automático desactivado"
+    },
+    "autoStart": {
+      "on": "Inicio automático activado",
+      "off": "Inicio automático desactivado"
     }
   },
   "modal": {
@@ -34,6 +42,7 @@
   "table": {
     "accountName": "Nombre de la cuenta",
     "accountToken": "Token de la cuenta",
+    "droplets": "Droplets",
     "pixelRight": "Límite de píxeles",
     "status": "Estado",
     "actions": "Acción",
@@ -48,7 +57,8 @@
     "worldXLabel": "World X",
     "worldYLabel": "World Y",
     "fetchButton": "Obtener",
-    "uploadImage": "Subir imagen"
+    "uploadImage": "Subir imagen",
+    "mosaicButton": "Mosaico"
   },
   "preview": {
     "scale": "Escala (%)",
@@ -58,10 +68,25 @@
     "fillBackground": "Rellenar fondo",
     "color": "Color",
     "addToMap": "Añadir al mapa",
-    "maxSizeExceeded": "El tamaño máximo es 1000x1000 píxeles."
+    "maxSizeExceeded": "El tamaño máximo es 1000x1000 píxeles.",
+    "alphaThreshold": "Transparencia",
+    "colorMetric": "Algoritmo color",
+    "metricRgb": "RGB (rápido, \"seguro\")",
+    "metricLab": "Lab (CIE76)",
+    "metricOklab": "Oklab",
+    "metricCiede2000": "CIEDE2000 (más preciso, más lento)",
+    "dithering": "Dithering",
+    "ditheringOn": "Dithering: ON",
+    "ditheringOff": "Dithering: OFF"
   },
   "settings": {
     "cf_clearance": "cf_clearance"
+  },
+  "mosaic": {
+    "title": "Mosaico",
+    "use2": "Usar 2 coord",
+    "use4": "Usar 4 coord",
+    "fetch": "Obtener"
   },
   "buttons": {
     "back": "Atrás",
@@ -69,7 +94,8 @@
     "add": "Añadir",
     "saveSettings": "Guardar",
     "edit": "Editar",
-    "checkPixels": "Comprobar píxeles",
+    "checkPixels": "Comprobar",
+    "shop": "Tienda",
     "delete": "Eliminar"
   },
   "thumb": {
@@ -83,6 +109,23 @@
     "transparentTitle": "Transparente (color de la imagen)",
     "colorTitle": "Color #{id}"
   },
+  "paletteMode": {
+    "premium": "Usar color premium",
+    "free": "Usar color gratis"
+  },
+  "shop": {
+    "premiumTitle": "Colores Premium",
+    "purchased": "Colores comprados",
+    "exclusive": "Paleta exclusiva",
+    "buyPremium": "💧 2000 Droplets",
+    "itemsTitle": "Artículos",
+    "itemsSub": "Obtén más cargas",
+    "maxTitle": "+5 Cargas Máx.",
+    "maxDesc": "Aumenta la capacidad máxima de cargas de pintura",
+    "recTitle": "+30 Cargas de Pintura",
+    "recDesc": "Recarga cargas de pintura",
+    "autoBuy": "Compra automática"
+  },
   "controls": {
     "movement": "Movimiento"
   },
@@ -94,19 +137,30 @@
     "right": "Derecha"
   },
   "messages": {
-    "selectAccountFirst": "Selecciona primero una cuenta.",
+    "selectAccountFirst": "Selecciona una cuenta primero.",
     "maxPixelsReached": "Has alcanzado el máximo de píxeles: {limit}/{limit}",
-    "addCfClearancePrompt": "Primero añade el valor cf_clearance en Ajustes (mín. 30 caracteres).",
+    "addCfClearancePrompt": "Primero agrega el valor cf_clearance en Configuración (mín. 30 caracteres).",
     "max12Accounts": "Puedes seleccionar hasta 12 cuentas.",
-    "startRequirementsMissing": "Para iniciar, introduce token, selecciona cuentas y elige al menos 1 píxel.",
+    "startRequirementsMissing": "Para empezar ingresa el token, selecciona cuentas y al menos 1 píxel.",
     "noSelectedImage": "No hay imagen seleccionada.",
     "errorGeneric": "Error",
     "painted": "Pintado.",
-    "insufficientPixelPower": "Potencia de píxel insuficiente: {n} píxeles no se pudieron enviar.",
-    "imageLoadFailed": "No se pudo cargar la imagen. Revisa los valores.",
+    "insufficientPixelPower": "Poder de píxeles insuficiente: {n} píxeles no se pudieron enviar.",
+    "imageLoadFailed": "No se pudo cargar la imagen. Verifica los valores.",
     "tokenAlreadyExists": "Ya existe una cuenta con este token.",
-    "cfCannotBeClearedWithAccounts": "cf_clearance no puede quedar vacío mientras haya cuentas.",
-    "cfClearanceChange": "Cambia el valor de cf_clearance."
+    "cfCannotBeClearedWithAccounts": "cf_clearance no puede estar vacío mientras existan cuentas.",
+    "cfClearanceChange": "Por favor cambia cf_clearance.",
+    "purchaseSuccess": "Compra exitosa",
+    "purchaseFail": "Compra fallida",
+    "tokenPastedFromExtension": "Token pegado desde la extensión"
+  },
+  "favorites": {
+    "openTitle": "Abrir favoritos",
+    "starTitle": "Guardar ubicación",
+    "title": "Favoritos",
+    "saveTitle": "Guardar ubicación",
+    "nameLabel": "Nombre",
+    "load": "Cargar"
   }
 }
 

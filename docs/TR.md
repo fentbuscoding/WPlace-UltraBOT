@@ -6,12 +6,13 @@
   <a href="FR.md"><img src="https://flagcdn.com/256x192/fr.png" width="48" alt="France Flag"></a>
   <a href="RU.md"><img src="https://flagcdn.com/256x192/ru.png" width="48" alt="Russia Flag"></a>
   <a href="JA.md"><img src="https://flagcdn.com/256x192/jp.png" width="48" alt="Japan Flag"></a>
+  <a href="CN.md"><img src="https://flagcdn.com/256x192/cn.png" width="48" alt="China Flag"></a>
 </p>
 
 ---
 
 > [!NOTE]
-> **Merhaba, yeni önlemler geldikten sonra bu botu geliştirmeye karar verdim ve yalnızca bir günde tamamlandı. Bu önlemler nedeniyle şu an için tamamen otomatik bir bot yapmak mümkün görünmüyor. Ancak mevcut bir açıktan yararlanarak tek bir doğrulama ile bir saniyede 12 hesaptan çizim yapabiliyoruz. Hesapların dolu olduğunu varsayarsak, 12 * 62 = <strong>744</strong> piksel/saniye gönderebiliyoruz. Hazırsanız, kullanım adımlarını aşağıda anlattım.**
+> **Merhaba, yeni önlemler geldikten sonra bu botu geliştirmeye karar verdim ve yalnızca bir günde tamamlandı. Bu önlemler nedeniyle şu an için tamamen otomatik bir bot yapmak mümkün görünmüyor. ~~Ancak mevcut bir açıktan yararlanarak tek bir doğrulama ile bir saniyede 12 hesaptan çizim yapabiliyoruz. Hesapların dolu olduğunu varsayarsak, 12 * 62 = <strong>744</strong> piksel/saniye gönderebiliyoruz.~~ Güncellemeden sonra bu açık kapatıldı; bu yüzden her hesap gönderimi için yeniden bir token almanız gerekecek. Hazırsanız, kullanım adımlarını aşağıda anlattım.**
 
 ---
 
@@ -87,7 +88,9 @@ Açılan pencerede üstten 'Application' sekmesini seçin (bulamazsanız sarı i
 ![Bölüm 4](https://i.imgur.com/sJvyiC6.png)
 
 Bota geri dönün.<br>
-"Accounts" butonuna, ardından "Settings" butonuna tıklayın. Kopyaladığınız `cf_clearance` değerini ilgili alana yapıştırıp kaydedin.<br>
+"Accounts" butonuna, ardından "Add Account" butonuna tıklayın. Kopyaladığınız değeri `cf_clearance` alanına yapıştırın.<br>
+Not!<br>
+Son güncelleme ile karşı önlemler alındığı için artık her hesap için bir `cf_clearance` değeri girmeniz gerekiyor. Bunu hızlıca yapmak için gizli sekmede wplace.live sayfasını açıp token'ı alın. Giriş yapmanız gerekmez.
 
 ---
 
